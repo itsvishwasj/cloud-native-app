@@ -56,7 +56,7 @@ spec:
 
       # targetPort: the port on the backend Pod to forward traffic to.
       # Matches the containerPort declared in deployment.yaml.
-      targetPort: 80
+      targetPort: 3000
 
       # nodePort: the static port opened on every cluster node.
       # Valid range: 30000-32767.  If omitted, Kubernetes auto-assigns one.

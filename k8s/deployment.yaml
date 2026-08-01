@@ -80,7 +80,7 @@ spec:
           # ports: declare which ports the container listens on.
           ports:
             - name: http           # Human-readable port name
-              containerPort: 80    # Port exposed inside the container
+              containerPort: 3000    # Port exposed inside the container
               protocol: TCP        # Protocol (TCP is default, but explicit)
 
           # resources: CPU & memory requests and limits.
