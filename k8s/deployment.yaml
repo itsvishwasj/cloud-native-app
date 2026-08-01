@@ -70,7 +70,7 @@ spec:
           # image: the container image to run.
           # "nginx:latest" is a placeholder; replace with your team's image
           # (e.g., gcr.io/my-project/web-app:v1.2.3) before going to prod.
-          image: nginx:latest
+          image: itsvishwasj/cloud-native-app:latest
 
           # imagePullPolicy: controls when the kubelet pulls the image.
           # "Always" ensures the latest tag is re-pulled on every Pod start.
