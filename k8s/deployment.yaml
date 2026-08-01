@@ -70,7 +70,7 @@ spec:
           # image: the container image to run.
           # "nginx:latest" is a placeholder; replace with your team's image
           # (e.g., gcr.io/my-project/web-app:v1.2.3) before going to prod.
-          image: nginx:latest
+          image: itsvishwasj/cloud-native-app:latest
 
           # imagePullPolicy: controls when the kubelet pulls the image.
           # "Always" ensures the latest tag is re-pulled on every Pod start.
@@ -80,7 +80,7 @@ spec:
           # ports: declare which ports the container listens on.
           ports:
             - name: http           # Human-readable port name
-              containerPort: 80    # Port exposed inside the container
+              containerPort: 3000    # Port exposed inside the container
               protocol: TCP        # Protocol (TCP is default, but explicit)
 
           # resources: CPU & memory requests and limits.
