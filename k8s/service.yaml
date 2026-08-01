@@ -1,0 +1,64 @@
+# =============================================================================
+# Kubernetes Service — web-app-service
+# =============================================================================
+# A Service provides a stable network endpoint (IP + DNS name) to access a
+# group of Pods.  Because Pods are ephemeral (they can be killed, rescheduled,
+# or scaled at any time), you should never address them directly.  The Service
+# acts as a load-balanced front-door.
+#
+# Type: NodePort
+#   – Exposes the Service on a static port on every node's IP.
+#   – Ideal for development and Minikube.  In production, use LoadBalancer
+#     or Ingress for external traffic, and ClusterIP for internal traffic.
+# =============================================================================
+
+# -- API version: v1 is the core API group for Services.
+apiVersion: v1
+
+# -- Kind: the resource type.
+kind: Service
+
+# -- Metadata: descriptive information about the Service.
+metadata:
+  # Name of the Service. Other resources reference it by this name.
+  name: web-app-service
+  # Namespace: must match the Deployment's namespace.
+  namespace: default
+  # Labels for the Service object itself (useful for filtering).
+  labels:
+    app: web-app
+    tier: frontend
+    environment: production
+    managed-by: kubectl
+
+# -- Spec: defines how the Service routes traffic.
+spec:
+  # type: NodePort makes the Service reachable from outside the cluster
+  # via <NodeIP>:<NodePort>.  Minikube provides a convenient
+  # `minikube service` command to open it automatically.
+  type: NodePort
+
+  # selector: determines which Pods receive traffic from this Service.
+  # Every Pod whose labels match ALL key-value pairs here will be included
+  # in the Service's endpoint list.  These labels MUST match the ones in
+  # the Deployment's Pod template.
+  selector:
+    app: web-app
+
+  # ports: list of port mappings exposed by the Service.
+  ports:
+    - name: http             # Human-readable name for the port mapping
+      protocol: TCP          # Protocol (TCP is default, stated explicitly)
+
+      # port: the port the Service itself listens on (cluster-internal).
+      # Other Pods can reach this Service at web-app-service:80.
+      port: 80
+
+      # targetPort: the port on the backend Pod to forward traffic to.
+      # Matches the containerPort declared in deployment.yaml.
+      targetPort: 80
+
+      # nodePort: the static port opened on every cluster node.
+      # Valid range: 30000-32767.  If omitted, Kubernetes auto-assigns one.
+      # Uncomment the line below to pin it to a specific port:
+      # nodePort: 30080
