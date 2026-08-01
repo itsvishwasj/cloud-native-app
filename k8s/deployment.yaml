@@ -1,0 +1,124 @@
+# =============================================================================
+# Kubernetes Deployment — web-app
+# =============================================================================
+# A Deployment manages a set of identical (replicated) Pods and ensures the
+# desired number of them are running at all times.  It handles rolling updates,
+# rollbacks, and self-healing automatically.
+# =============================================================================
+
+# -- API version: apps/v1 is the stable API group for Deployments.
+apiVersion: apps/v1
+
+# -- Kind: tells Kubernetes what type of resource to create.
+kind: Deployment
+
+# -- Metadata: descriptive information about the Deployment itself.
+metadata:
+  # Name of the Deployment object (must be unique within the namespace).
+  name: web-app
+  # Namespace where this Deployment lives. "default" is used here; in
+  # production you would typically create a dedicated namespace.
+  namespace: default
+  # Labels attached to the Deployment object (not the Pods).
+  # These are useful for organizing, filtering, and querying resources.
+  labels:
+    app: web-app              # Identifies the application
+    tier: frontend             # Logical tier (frontend / backend / cache …)
+    environment: production    # Deployment stage
+    managed-by: kubectl        # Tooling that manages this resource
+
+# -- Spec: the desired state for this Deployment.
+spec:
+  # replicas: the number of identical Pod copies to maintain.
+  # The HPA (hpa.yaml) will dynamically override this value at runtime.
+  replicas: 2
+
+  # selector: how the Deployment finds the Pods it owns.
+  # The labels here MUST match the labels in the Pod template below.
+  selector:
+    matchLabels:
+      app: web-app
+
+  # strategy: controls how old Pods are replaced with new ones during updates.
+  strategy:
+    type: RollingUpdate        # Zero-downtime deployments (default strategy)
+    rollingUpdate:
+      # maxSurge: maximum number of Pods that can be created above the desired
+      # replica count during an update (1 = one extra Pod at a time).
+      maxSurge: 1
+      # maxUnavailable: maximum number of Pods that can be unavailable during
+      # the update (0 = all existing Pods stay up until a new Pod is ready).
+      maxUnavailable: 0
+
+  # revisionHistoryLimit: number of old ReplicaSets to keep for rollback.
+  revisionHistoryLimit: 5
+
+  # template: the Pod blueprint that the Deployment stamps out.
+  template:
+    metadata:
+      # Labels applied to every Pod created by this Deployment.
+      # Must include at least the labels referenced by selector.matchLabels.
+      labels:
+        app: web-app
+        tier: frontend
+        environment: production
+    spec:
+      # containers: list of containers that run inside each Pod.
+      containers:
+        - name: web-app          # Container name (unique within the Pod)
+
+          # image: the container image to run.
+          # "nginx:latest" is a placeholder; replace with your team's image
+          # (e.g., gcr.io/my-project/web-app:v1.2.3) before going to prod.
+          image: nginx:latest
+
+          # imagePullPolicy: controls when the kubelet pulls the image.
+          # "Always" ensures the latest tag is re-pulled on every Pod start.
+          # For tagged releases (e.g., v1.2.3), use "IfNotPresent" instead.
+          imagePullPolicy: Always
+
+          # ports: declare which ports the container listens on.
+          ports:
+            - name: http           # Human-readable port name
+              containerPort: 80    # Port exposed inside the container
+              protocol: TCP        # Protocol (TCP is default, but explicit)
+
+          # resources: CPU & memory requests and limits.
+          # Requests = guaranteed minimum; Limits = hard ceiling.
+          resources:
+            requests:
+              cpu: "100m"          # 100 milliCPU = 0.1 CPU core
+              memory: "128Mi"      # 128 Mebibytes of RAM
+            limits:
+              cpu: "500m"          # 500 milliCPU = 0.5 CPU core
+              memory: "512Mi"      # 512 Mebibytes of RAM
+
+          # livenessProbe: Kubernetes restarts the container if this fails.
+          # Detects deadlocks or hung processes.
+          livenessProbe:
+            httpGet:
+              path: /              # Endpoint to hit
+              port: http           # References the named port above
+            initialDelaySeconds: 15  # Wait before first probe
+            periodSeconds: 20       # Probe interval
+            timeoutSeconds: 5       # Probe timeout
+            failureThreshold: 3     # Restart after 3 consecutive failures
+
+          # readinessProbe: Kubernetes removes the Pod from Service endpoints
+          # if this fails. Prevents traffic from reaching an unready Pod.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5   # Start probing early
+            periodSeconds: 10        # Check every 10 s
+            timeoutSeconds: 3
+            successThreshold: 1      # One success → mark ready
+            failureThreshold: 3      # Three failures → mark not-ready
+
+      # restartPolicy: "Always" is the only valid option for Deployments.
+      restartPolicy: Always
+
+      # terminationGracePeriodSeconds: time (in seconds) Kubernetes waits
+      # after sending SIGTERM before force-killing the container.
+      terminationGracePeriodSeconds: 30
