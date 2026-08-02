@@ -1,4 +1,4 @@
-name: Build and Push Docker Image to Docker Hub
+name: Build, Review & Push Docker Image
 
 on:
   push:
@@ -6,9 +6,103 @@ on:
       - main
 
 jobs:
+  # ===========================================================================
+  # Job 1: AI Code Review — Quality Gate
+  # ===========================================================================
+  # Runs AI-powered code review on changed files. If Critical issues are
+  # detected, the pipeline fails and the Docker build is blocked.
+  # ===========================================================================
+  ai-code-review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout with history for git diff
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need HEAD~1 for diff
+
+      # 2. Set up Python
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 3. Cache pip dependencies
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('ai-review/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # 4. Install dependencies
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ai-review/requirements.txt
+
+      # 5. Run AI Code Review
+      - name: Run AI Code Review
+        working-directory: ai-review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+          LOG_LEVEL: INFO
+        run: |
+          python review.py
+        continue-on-error: true
+        id: review
+
+      # 6. Generate HTML Report
+      - name: Generate HTML Report
+        working-directory: ai-review
+        run: |
+          python html_report.py
+        continue-on-error: true
+
+      # 7. Upload reports as artifacts
+      - name: Upload Review Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ai-review-reports
+          path: ai-review/reports/
+          retention-days: 30
+
+      # 8. Quality Gate — Fail if critical issues detected
+      - name: Check for Critical Issues
+        working-directory: ai-review
+        run: |
+          if [ -f reports/review_report.json ]; then
+            CRITICAL_COUNT=$(python -c "
+          import json
+          with open('reports/review_report.json') as f:
+              data = json.load(f)
+          print(data.get('critical_count', 0))
+          ")
+            echo "Critical issues found: $CRITICAL_COUNT"
+            if [ "$CRITICAL_COUNT" -gt 0 ]; then
+              echo "::error::🚨 AI Code Review detected $CRITICAL_COUNT CRITICAL issue(s). Deployment blocked."
+              exit 1
+            else
+              echo "✅ No critical issues detected. Proceeding to build."
+            fi
+          else
+            echo "⚠️ No review report found. Proceeding with caution."
+          fi
+
+  # ===========================================================================
+  # Job 2: Build & Push Docker Image
+  # ===========================================================================
+  # Only runs if AI Code Review passes (no Critical issues).
+  # ===========================================================================
   build-and-push:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
+    needs: ai-code-review  # Depends on review passing
 
     steps:
       # 1. Checkout repository code

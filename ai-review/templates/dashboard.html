@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Code Review Dashboard</title>
+<style>
+  :root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --border-color: #475569;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --critical: #dc2626;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+  }
+
+  /* Navigation */
+  .nav {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.75rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .nav-brand {
+    font-size: 1.2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .nav-actions { display: flex; gap: 0.75rem; }
+  .btn {
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .btn:hover { background: var(--accent); border-color: var(--accent); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-danger { background: var(--danger); border-color: var(--danger); }
+
+  /* Main Layout */
+  .main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
+
+  /* Score Section */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .score-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .score-ring {
+    position: relative;
+    width: 180px;
+    height: 180px;
+    margin-bottom: 1rem;
+  }
+  .score-ring svg { transform: rotate(-90deg); }
+  .score-ring circle { fill: none; stroke-width: 12; }
+  .score-ring .ring-bg { stroke: var(--bg-tertiary); }
+  .score-ring .ring-fg { stroke-linecap: round; transition: stroke-dasharray 1.5s ease; }
+  .score-ring .score-text {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+  }
+  .score-ring .score-num { font-size: 3rem; font-weight: 800; }
+  .score-ring .score-lbl { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* Severity Cards Grid */
+  .severity-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  .sev-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.25rem;
+  }
+  .sev-card .sev-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+  .sev-card .sev-title { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+  .sev-card .sev-icon { font-size: 1.5rem; }
+  .sev-card .sev-count { font-size: 2.5rem; font-weight: 800; }
+  .sev-card .sev-bar { height: 4px; border-radius: 2px; margin-top: 0.75rem; }
+
+  /* Stats Row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .stat-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .stat-icon { font-size: 2rem; }
+  .stat-info .stat-value { font-size: 1.5rem; font-weight: 700; }
+  .stat-info .stat-label { font-size: 0.78rem; color: var(--text-secondary); }
+
+  /* Section Headers */
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+  .section-title { font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
+
+  /* Issues Table */
+  .issues-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+  }
+  .issues-table { width: 100%; border-collapse: collapse; }
+  .issues-table th {
+    background: var(--bg-tertiary);
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+  }
+  .issues-table td {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid rgba(71, 85, 105, 0.5);
+    font-size: 0.88rem;
+    vertical-align: top;
+  }
+  .issues-table tr:hover { background: rgba(59, 130, 246, 0.05); }
+  .severity-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .category-badge {
+    background: rgba(59, 130, 246, 0.12);
+    color: #60a5fa;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  .file-path {
+    font-family: 'Courier New', monospace;
+    font-size: 0.82rem;
+    color: var(--accent);
+  }
+  .issue-desc strong { display: block; margin-bottom: 0.2rem; }
+  .issue-desc .expl { color: var(--text-secondary); font-size: 0.82rem; }
+  .fix-block {
+    margin-top: 0.3rem;
+  }
+  .fix-block summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  .fix-block pre {
+    background: var(--bg-primary);
+    padding: 0.6rem;
+    border-radius: 6px;
+    margin-top: 0.4rem;
+    overflow-x: auto;
+    font-size: 0.78rem;
+    border: 1px solid var(--border-color);
+    color: #e2e8f0;
+  }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-secondary);
+  }
+  .empty-state .empty-icon { font-size: 4rem; margin-bottom: 1rem; }
+  .empty-state h3 { color: var(--text-primary); margin-bottom: 0.5rem; }
+
+  /* Status indicator */
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 0.4rem;
+  }
+  .status-online { background: var(--success); box-shadow: 0 0 6px var(--success); }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 1.5rem;
+    border-top: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    margin-top: 2rem;
+  }
+
+  /* Loading spinner */
+  .spinner {
+    display: none;
+    width: 20px; height: 20px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .dashboard-grid { grid-template-columns: 1fr; }
+    .severity-grid { grid-template-columns: repeat(4, 1fr); }
+    .nav { padding: 0.75rem 1rem; }
+    .main { padding: 1rem; }
+  }
+  @media (max-width: 600px) {
+    .severity-grid { grid-template-columns: repeat(2, 1fr); }
+    .issues-table th:nth-child(3), .issues-table td:nth-child(3) { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand">
+    <span>🤖</span> AI Code Review Dashboard
+  </div>
+  <div class="nav-actions">
+    <span style="display:flex;align-items:center;gap:0.4rem;color:var(--text-secondary);font-size:0.85rem;">
+      <span class="status-dot status-online"></span> Service Online
+    </span>
+    <button class="btn" onclick="loadReport()" id="refreshBtn">🔄 Refresh</button>
+    <a class="btn" href="/reports/report.html" target="_blank">📄 Full Report</a>
+  </div>
+</nav>
+
+<main class="main">
+  <div id="dashboard-content">
+    <!-- Score and Severity Section -->
+    <div class="dashboard-grid" id="scoreSection" style="display:none;">
+      <div class="score-card">
+        <div class="score-ring">
+          <svg width="180" height="180" viewBox="0 0 180 180">
+            <circle class="ring-bg" cx="90" cy="90" r="78"/>
+            <circle class="ring-fg" cx="90" cy="90" r="78" id="scoreRing"/>
+          </svg>
+          <div class="score-text">
+            <div class="score-num" id="scoreValue">—</div>
+            <div class="score-lbl">Overall Score</div>
+          </div>
+        </div>
+        <div style="text-align:center;color:var(--text-secondary);font-size:0.85rem;" id="scoreStatus"></div>
+      </div>
+      <div class="severity-grid">
+        <div class="sev-card">
+          <div class="sev-header">
+            <span class="sev-title">Critical</span>
+            <span class="sev-icon">🔴</span>
+          </div>
+          <div class="sev-count" id="criticalCount" style="color:#dc2626">0</div>
+          <div class="sev-bar" style="background:linear-gradient(90deg,#dc2626 var(--crit-pct,0%),var(--bg-tertiary) var(--crit-pct,0%))"></div>
+        </div>
+        <div class="sev-card">
+          <div class="sev-header">
+            <span class="sev-title">High</span>
+            <span class="sev-icon">🟠</span>
+          </div>
+          <div class="sev-count" id="highCount" style="color:#ef4444">0</div>
+          <div class="sev-bar" style="background:linear-gradient(90deg,#ef4444 var(--high-pct,0%),var(--bg-tertiary) var(--high-pct,0%))"></div>
+        </div>
+        <div class="sev-card">
+          <div class="sev-header">
+            <span class="sev-title">Medium</span>
+            <span class="sev-icon">🟡</span>
+          </div>
+          <div class="sev-count" id="mediumCount" style="color:#f59e0b">0</div>
+          <div class="sev-bar" style="background:linear-gradient(90deg,#f59e0b var(--med-pct,0%),var(--bg-tertiary) var(--med-pct,0%))"></div>
+        </div>
+        <div class="sev-card">
+          <div class="sev-header">
+            <span class="sev-title">Low</span>
+            <span class="sev-icon">🟢</span>
+          </div>
+          <div class="sev-count" id="lowCount" style="color:#22c55e">0</div>
+          <div class="sev-bar" style="background:linear-gradient(90deg,#22c55e var(--low-pct,0%),var(--bg-tertiary) var(--low-pct,0%))"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="stats-row" id="statsRow" style="display:none;">
+      <div class="stat-card">
+        <div class="stat-icon">📁</div>
+        <div class="stat-info">
+          <div class="stat-value" id="filesReviewed">0</div>
+          <div class="stat-label">Files Reviewed</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🔍</div>
+        <div class="stat-info">
+          <div class="stat-value" id="totalIssues">0</div>
+          <div class="stat-label">Total Issues</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🔀</div>
+        <div class="stat-info">
+          <div class="stat-value" id="branchName" style="font-size:1rem">—</div>
+          <div class="stat-label">Branch</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📝</div>
+        <div class="stat-info">
+          <div class="stat-value" id="commitSha" style="font-size:1rem;font-family:monospace">—</div>
+          <div class="stat-label">Commit</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Issues Table -->
+    <div id="issuesSection" style="display:none;">
+      <div class="section-header">
+        <h2 class="section-title">🔍 All Issues</h2>
+        <div style="display:flex;gap:0.5rem;align-items:center;">
+          <select id="severityFilter" class="btn" onchange="filterIssues()">
+            <option value="all">All Severities</option>
+            <option value="Critical">Critical</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+        </div>
+      </div>
+      <div class="issues-panel">
+        <table class="issues-table">
+          <thead>
+            <tr>
+              <th>Severity</th>
+              <th>Category</th>
+              <th>File</th>
+              <th>Line</th>
+              <th>Issue</th>
+              <th>Suggestion</th>
+            </tr>
+          </thead>
+          <tbody id="issuesBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">📋</div>
+      <h3>No Review Data Available</h3>
+      <p>Run an AI code review to see results here.</p>
+      <button class="btn btn-primary" onclick="triggerReview()" style="margin-top:1rem;">🚀 Run Review Now</button>
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <p>AI Code Review Dashboard • Powered by Google Gemini & FastAPI</p>
+</footer>
+
+<script>
+const SEV_COLORS = {
+  Critical: { color: '#dc2626', bg: 'rgba(220,38,38,0.15)' },
+  High:     { color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+  Medium:   { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+  Low:      { color: '#22c55e', bg: 'rgba(34,197,94,0.15)' }
+};
+
+const CAT_LABELS = {
+  logic_bug: 'Logic Bug', runtime_bug: 'Runtime Bug', security: 'Security',
+  performance: 'Performance', kubernetes: 'Kubernetes', cicd: 'CI/CD',
+  code_smell: 'Code Smell', best_practice: 'Best Practice'
+};
+
+let currentReport = null;
+let allIssues = [];
+
+function scoreColor(s) {
+  if (s >= 90) return '#10b981';
+  if (s >= 70) return '#f59e0b';
+  if (s >= 50) return '#f97316';
+  return '#ef4444';
+}
+
+function escapeHtml(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+async function loadReport() {
+  try {
+    const res = await fetch('/api/latest-report');
+    if (!res.ok) {
+      document.getElementById('emptyState').style.display = 'block';
+      document.getElementById('scoreSection').style.display = 'none';
+      document.getElementById('statsRow').style.display = 'none';
+      document.getElementById('issuesSection').style.display = 'none';
+      return;
+    }
+    currentReport = await res.json();
+    renderDashboard(currentReport);
+  } catch(e) {
+    console.error('Failed to load report:', e);
+  }
+}
+
+function renderDashboard(r) {
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('scoreSection').style.display = 'grid';
+  document.getElementById('statsRow').style.display = 'grid';
+  document.getElementById('issuesSection').style.display = 'block';
+
+  // Score ring
+  const sc = scoreColor(r.overall_score);
+  const ring = document.getElementById('scoreRing');
+  const circ = 2 * Math.PI * 78;
+  ring.style.stroke = sc;
+  ring.style.strokeDasharray = `${(r.overall_score / 100) * circ} ${circ}`;
+  document.getElementById('scoreValue').textContent = r.overall_score;
+  document.getElementById('scoreValue').style.color = sc;
+
+  const statusEl = document.getElementById('scoreStatus');
+  if (r.overall_score >= 90) statusEl.textContent = '✅ Excellent';
+  else if (r.overall_score >= 70) statusEl.textContent = '⚠️ Needs Improvement';
+  else statusEl.textContent = '❌ Poor Quality';
+
+  // Severity counts
+  const total = (r.critical_count||0) + (r.high_count||0) + (r.medium_count||0) + (r.low_count||0) || 1;
+  document.getElementById('criticalCount').textContent = r.critical_count || 0;
+  document.getElementById('highCount').textContent = r.high_count || 0;
+  document.getElementById('mediumCount').textContent = r.medium_count || 0;
+  document.getElementById('lowCount').textContent = r.low_count || 0;
+
+  // Stats
+  document.getElementById('filesReviewed').textContent = r.total_files_reviewed || 0;
+  document.getElementById('totalIssues').textContent = r.total_issues || 0;
+  document.getElementById('branchName').textContent = r.branch || '—';
+  document.getElementById('commitSha').textContent = r.commit_sha ? r.commit_sha.substring(0,8) : '—';
+
+  // Collect all issues with file info
+  allIssues = [];
+  (r.file_reviews || []).forEach(fr => {
+    (fr.issues || []).forEach(issue => {
+      allIssues.push({ ...issue, _file: fr.filename });
+    });
+  });
+
+  // Sort: Critical first, then High, Medium, Low
+  const sevOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+  allIssues.sort((a, b) => (sevOrder[a.severity] || 9) - (sevOrder[b.severity] || 9));
+
+  filterIssues();
+}
+
+function filterIssues() {
+  const filter = document.getElementById('severityFilter').value;
+  const filtered = filter === 'all' ? allIssues : allIssues.filter(i => i.severity === filter);
+  const tbody = document.getElementById('issuesBody');
+  tbody.innerHTML = '';
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-secondary)">No issues found</td></tr>';
+    return;
+  }
+
+  filtered.forEach(issue => {
+    const sev = issue.severity || 'Low';
+    const cat = issue.category || 'code_smell';
+    const sevStyle = SEV_COLORS[sev] || SEV_COLORS.Low;
+    const catLabel = CAT_LABELS[cat] || cat.replace(/_/g, ' ');
+    const fixHtml = issue.corrected_code ?
+      `<details class="fix-block"><summary>View Fix</summary><pre>${escapeHtml(issue.corrected_code)}</pre></details>` : '';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="severity-badge" style="color:${sevStyle.color};background:${sevStyle.bg}">${sev}</span></td>
+      <td><span class="category-badge">${escapeHtml(catLabel)}</span></td>
+      <td class="file-path">${escapeHtml(issue._file || '')}</td>
+      <td style="text-align:center;color:var(--text-secondary);font-family:monospace">${issue.line || '—'}</td>
+      <td class="issue-desc">
+        <strong>${escapeHtml(issue.issue || '')}</strong>
+        <div class="expl">${escapeHtml(issue.explanation || '')}</div>
+      </td>
+      <td>${escapeHtml(issue.suggestion || '')}${fixHtml}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function triggerReview() {
+  const btn = document.querySelector('[onclick="triggerReview()"]');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running Review...';
+  try {
+    const res = await fetch('/api/review', { method: 'POST' });
+    if (res.ok) {
+      await loadReport();
+    } else {
+      alert('Review failed. Check server logs.');
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 Run Review Now';
+  }
+}
+
+// Load on page open
+document.addEventListener('DOMContentLoaded', loadReport);
+</script>
+</body>
+</html>
