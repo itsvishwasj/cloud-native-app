@@ -2,12 +2,97 @@ const express = require('express');
 const morgan = require('morgan');
 const path = require('path');
 const { Worker } = require('worker_threads');
+const client = require('prom-client');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Enable default Node.js and process metrics
+client.collectDefaultMetrics();
+
+// Define custom application metrics
+const httpRequestCounter = new client.Counter({
+  name: 'http_requests_total',
+  help: 'Total number of HTTP requests processed',
+  labelNames: ['method', 'route', 'status_code']
+});
+
+const httpRequestDurationHistogram = new client.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'Duration of HTTP requests in seconds',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15, 30]
+});
+
+const httpRequestsInProgress = new client.Gauge({
+  name: 'http_requests_in_progress',
+  help: 'Number of HTTP requests currently in progress',
+  labelNames: ['method', 'route']
+});
+
+// Helper function to normalize routes and prevent high-cardinality labels (e.g. 404s or query parameters)
+function getNormalizedRoute(req) {
+  if (req.route && req.route.path) {
+    return req.route.path;
+  }
+  if (req.path === '/' || req.path === '/health' || req.path === '/stress') {
+    return req.path;
+  }
+  return 'unmatched';
+}
+
+// Middleware for Prometheus metrics collection
+app.use((req, res, next) => {
+  if (req.path === '/metrics') {
+    return next();
+  }
+
+  const startBigInt = process.hrtime.bigint();
+  const initialRoute = getNormalizedRoute(req);
+
+  httpRequestsInProgress.inc({ method: req.method, route: initialRoute });
+
+  res.on('finish', () => {
+    httpRequestsInProgress.dec({ method: req.method, route: initialRoute });
+
+    const endBigInt = process.hrtime.bigint();
+    const durationSeconds = Number(endBigInt - startBigInt) / 1e9;
+
+    const matchedRoute = getNormalizedRoute(req);
+    const statusCode = res.statusCode ? res.statusCode.toString() : 'unknown';
+
+    httpRequestCounter.inc({
+      method: req.method,
+      route: matchedRoute,
+      status_code: statusCode
+    });
+
+    httpRequestDurationHistogram.observe(
+      {
+        method: req.method,
+        route: matchedRoute,
+        status_code: statusCode
+      },
+      durationSeconds
+    );
+  });
+
+  next();
+});
+
 // HTTP request logging middleware
 app.use(morgan('combined'));
+
+// Prometheus metrics endpoint
+app.get('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', client.register.contentType);
+    res.end(await client.register.metrics());
+  } catch (error) {
+    res.status(500).end(error.message);
+  }
+});
+
 
 // Root route
 app.get('/', (req, res) => {
