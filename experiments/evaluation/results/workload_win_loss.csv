@@ -1,0 +1,6 @@
+workload,p95_latency_winner,sla_violation_winner,resource_efficiency_winner,scaling_timing_winner,overall_assessment
+constant,Proposed Better,Proposed Better,Baseline Better,Proposed Better,Proposed Superior Latency/SLA; Equal or Slight Resource Overhead
+step,Proposed Better,Proposed Better,Proposed Better,Proposed Better,Proposed Superior Latency/SLA; Equal or Slight Resource Overhead
+spike,Proposed Better,Proposed Better,Proposed Better,Proposed Better,Proposed Superior Latency/SLA; Equal or Slight Resource Overhead
+sustained,Proposed Better,Proposed Better,Proposed Better,Proposed Better,Proposed Superior Latency/SLA; Equal or Slight Resource Overhead
+recovery,Proposed Better,Proposed Better,Proposed Better,Proposed Better,Proposed Superior Latency/SLA; Equal or Slight Resource Overhead

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CloudOps Console | Single-Tab Operations Control Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="dark-theme">
+  <div class="app-shell">
+    <!-- Top Header -->
+    <header class="top-bar">
+      <div class="brand-section">
+        <div class="brand-logo">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4CC2F0" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+        </div>
+        <div class="brand-text">
+          <span class="title">CloudOps Control Center</span>
+          <span class="subtitle">Single-Tab Real-Time Predictive Scaling &amp; CI/CD Observability Dashboard</span>
+        </div>
+      </div>
+
+      <div class="top-status-group">
+        <div class="status-chip"><span class="label">ENV:</span> <span class="val">LOCAL / MINIKUBE</span></div>
+        <div class="status-chip"><span class="dot green pulse" id="top-conn-dot"></span> <span class="val state-live" id="top-conn-status">LIVE</span></div>
+      </div>
+
+      <div class="top-actions">
+        <div class="mode-toggle">
+          <button id="btn-simple-mode" class="toggle-btn active">Simple View</button>
+          <button id="btn-tech-mode" class="toggle-btn">Technical View</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Dashboard Container -->
+    <main class="dashboard-viewport">
+      
+      <!-- System Health Banner -->
+      <div class="health-banner">
+        <div class="health-item" id="gh-item"><span class="dot green"></span> GitHub</div>
+        <div class="health-item" id="cicd-item"><span class="dot green"></span> CI/CD Pipeline</div>
+        <div class="health-item" id="docker-item"><span class="dot green"></span> Docker Engine</div>
+        <div class="health-item" id="k8s-item"><span class="dot green"></span> Kubernetes</div>
+        <div class="health-item" id="prom-item"><span class="dot green"></span> Prometheus</div>
+        <div class="health-item" id="predictor-item"><span class="dot green"></span> EMA-TAP Predictor</div>
+        <div class="health-item" id="scaler-item"><span class="dot green"></span> Scaling Controller</div>
+        <div class="health-item" id="gemini-item"><span class="dot amber"></span> Gemini AI Engine</div>
+      </div>
+
+      <!-- Overview KPI Metrics Bar -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="card-head">REQUEST RATE (RPS)</div>
+          <div class="card-val" id="ov-val-rps">0.00</div>
+          <div class="card-sub">Measured HTTP Throughput</div>
+        </div>
+        <div class="metric-card">
+          <div class="card-head">PREDICTED (30s)</div>
+          <div class="card-val green-txt" id="ov-val-pred">0.00</div>
+          <div class="card-sub">EMA-TAP Workload Forecast</div>
+        </div>
+        <div class="metric-card">
+          <div class="card-head">P95 LATENCY</div>
+          <div class="card-val" id="ov-val-p95">0.535s</div>
+          <div class="card-sub">SLA Threshold: &le; 1.00s</div>
+        </div>
+        <div class="metric-card">
+          <div class="card-head">CPU UTILIZATION</div>
+          <div class="card-val" id="ov-val-cpu">0.0%</div>
+          <div class="card-sub">Target Core Capacity</div>
+        </div>
+        <div class="metric-card">
+          <div class="card-head">ACTIVE POD REPLICAS</div>
+          <div class="card-val" id="ov-val-rep">2 Pods</div>
+          <div class="card-sub">Min: 2 | Max: 10</div>
+        </div>
+      </div>
+
+      <!-- ROW 1: GITHUB COMMITS FEED & CI/CD PIPELINE FLOW -->
+      <div class="grid-row two-col">
+        <!-- Panel 1: GitHub Commits & Manual Trigger -->
+        <div class="panel-card">
+          <div class="card-header-bar">
+            <span class="card-title">1. GitHub Commits &amp; Trigger</span>
+            <button id="btn-trigger-pipeline" class="btn btn-primary">▶ TRIGGER BUILD &amp; DEPLOY</button>
+          </div>
+          <div class="commit-feed-container" id="git-commits-list">
+            <div class="empty-state">Loading GitHub commits…</div>
+          </div>
+        </div>
+
+        <!-- Panel 2: CI/CD Pipeline Automation Flow -->
+        <div class="panel-card">
+          <div class="card-header-bar">
+            <span class="card-title">2. CI/CD Pipeline Execution Stages</span>
+            <span class="pill green" id="pipeline-overall-status">IDLE</span>
+          </div>
+          <div class="stepper-bar">
+            <div class="step-node" id="step-node-1">01 CHECKOUT</div>
+            <div class="step-line"></div>
+            <div class="step-node" id="step-node-2">02 BUILD</div>
+            <div class="step-line"></div>
+            <div class="step-node" id="step-node-3">03 TEST</div>
+            <div class="step-line"></div>
+            <div class="step-node" id="step-node-4">04 SECURITY</div>
+            <div class="step-line"></div>
+            <div class="step-node" id="step-node-5">05 DOCKER</div>
+            <div class="step-line"></div>
+            <div class="step-node" id="step-node-6">06 DEPLOY</div>
+          </div>
+          <div class="topology-diagram mt-12" id="cicd-nodes-flow">
+            <div class="topo-node"><strong>Checkout</strong><div class="pill green mt-4">SUCCESS</div></div>
+            <div class="topo-line">➔</div>
+            <div class="topo-node"><strong>Build</strong><div class="pill green mt-4">SUCCESS</div></div>
+            <div class="topo-line">➔</div>
+            <div class="topo-node"><strong>Unit Tests</strong><div class="pill green mt-4">10/10</div></div>
+            <div class="topo-line">➔</div>
+            <div class="topo-node"><strong>Security</strong><div class="pill green mt-4">0 Vulns</div></div>
+            <div class="topo-line">➔</div>
+            <div class="topo-node"><strong>Docker</strong><div class="pill green mt-4">Built</div></div>
+            <div class="topo-line">➔</div>
+            <div class="topo-node"><strong>Deploy</strong><div class="pill green mt-4">Deployed</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ROW 2: AI LINE-BY-LINE ERROR DIAGNOSTICS & CODE CORRECTIONS -->
+      <div class="grid-row single-col mt-16">
+        <div class="panel-card ai-diagnostics-card">
+          <div class="card-header-bar">
+            <span class="card-title">3. AI Code &amp; DevOps Line-by-Line Error Diagnostics Engine <span class="pill blue">GEMINI AI ACTIVE</span></span>
+            <span class="muted" id="ai-engine-source">Source: Rules &amp; Gemini AI Model</span>
+          </div>
+          
+          <div class="ai-content-layout" id="ai-diagnostics-box">
+            <div class="ai-summary-block">
+              <div class="ai-tag-group">
+                <span class="pill red" id="ai-severity">SEVERITY: HIGH</span>
+                <span class="pill amber" id="ai-error-type">THREAD_QUEUEING_LATENCY_SPIKE</span>
+                <span class="muted" id="ai-affected-file">File: app/cpu-worker.js</span>
+              </div>
+              <p class="ai-explanation-text" id="ai-explanation">
+                Incoming request arrival rate surpassed single pod capacity (1.5 RPS/pod), causing synchronous thread pool queueing and raising P95 latency above 1.0s.
+              </p>
+            </div>
+
+            <!-- Line-by-Line Error Breakdown -->
+            <div class="ai-code-error-grid" id="ai-line-errors-container">
+              <div class="code-error-item">
+                <span class="line-num">Line 14</span>
+                <code class="code-snippet-line">const result = calculateFibonacci(42); // CPU Intensive Blocking</code>
+                <span class="issue-msg">Synchronous CPU-heavy calculation blocks Node.js event loop thread pool.</span>
+                <span class="fix-msg">✓ Fix: Move compute task to Worker Thread or async queue (`worker_threads.Worker`).</span>
+              </div>
+              <div class="code-error-item">
+                <span class="line-num">Line 28</span>
+                <code class="code-snippet-line">app.get('/work', (req, res) => { processSyncWork(req.body); });</code>
+                <span class="issue-msg">Request handler lacks backpressure handling and auto-scaling lead time.</span>
+                <span class="fix-msg">✓ Fix: Trigger EMA-TAP 30s predictive auto-scaling controller before thread queue exhausts capacity.</span>
+              </div>
+            </div>
+
+            <!-- Suggested Diff Patch -->
+            <div class="diff-box">
+              <div class="diff-header">Proposed Line Fix Diff Patch:</div>
+              <pre class="diff-content" id="ai-diff-patch">- const result = calculateFibonacci(42);
++ const result = await workerPool.exec('calculateFibonacci', [42]);</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ROW 3: COMMAND TERMINAL & WORKLOAD GENERATOR -->
+      <div class="grid-row two-col mt-16">
+        <!-- Panel 4: Real Command Terminal & Active Task Indicator Bar -->
+        <div class="panel-card">
+          <div class="card-header-bar">
+            <span class="card-title">4. Live Command Execution Terminal</span>
+            <div class="terminal-controls">
+              <button id="btn-demo-stop" class="btn btn-danger" disabled>⏹ STOP</button>
+              <button id="btn-demo-reset" class="btn btn-secondary">↻ RESET</button>
+            </div>
+          </div>
+          <div class="event-terminal" id="demo-event-terminal">
+            <div class="term-line">[SYS] Operations Console initialized. Ready to execute pipeline tasks.</div>
+          </div>
+          
+          <!-- Active Task Status Bar (Directly below terminal) -->
+          <div class="active-task-bar">
+            <span class="task-spinner"></span>
+            <span class="task-lbl">NOW RUNNING:</span>
+            <strong id="active-task-text" class="task-val">System Ready — Press Trigger Build or Send Fake Traffic to start</strong>
+          </div>
+        </div>
+
+        <!-- Panel 5: Workload Generator & Fake Request Controls -->
+        <div class="panel-card">
+          <div class="card-header-bar">
+            <span class="card-title">5. Synthetic Workload Generator (Fake Requests)</span>
+            <span class="pill blue" id="traffic-status-pill">IDLE</span>
+          </div>
+
+          <div class="traffic-controls-box">
+            <div class="traffic-slider-group">
+              <label for="rps-slider">Simulated Traffic Load: <strong id="rps-slider-val" class="green-txt">15.00 RPS</strong></label>
+              <input type="range" id="rps-slider" min="0" max="35" step="0.5" value="15.0">
+            </div>
+
+            <div class="profile-buttons-group">
+              <span class="group-label">Load Profile:</span>
+              <button class="profile-btn active" data-profile="spike">Spike Burst</button>
+              <button class="profile-btn" data-profile="step">Step Increase</button>
+              <button class="profile-btn" data-profile="constant">Constant Load</button>
+              <button class="profile-btn" data-profile="sustained">Sustained Load</button>
+            </div>
+
+            <div class="traffic-action-bar">
+              <button id="btn-send-traffic" class="btn btn-primary">⚡ SEND FAKE REQUESTS</button>
+              <button id="btn-stop-traffic" class="btn btn-secondary">⏹ STOP TRAFFIC</button>
+            </div>
+          </div>
+
+          <div class="scaling-box mt-12">
+            <div class="box-col"><span class="lbl">SIMULATED RPS</span><span class="val" id="sim-rps-val">0.00 RPS</span></div>
+            <div class="box-col"><span class="lbl">PREDICTED (30s)</span><span class="val green-txt" id="sim-pred-val">0.00 RPS</span></div>
+            <div class="box-col"><span class="lbl">SAFE CAPACITY</span><span class="val">1.50 RPS / Pod</span></div>
+            <div class="box-col"><span class="lbl">TARGET PODS</span><span class="val" id="sim-pods-val">2 Pods</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ROW 4: KUBERNETES PODS TERMINAL & TELEMETRY CHARTS -->
+      <div class="grid-row two-col mt-16">
+        <!-- Panel 6: Live Kubernetes Pod Scaling Terminal & Tiles -->
+        <div class="panel-card">
+          <div class="card-header-bar">
+            <span class="card-title">6. Live Kubernetes Pod Scaling Terminal &amp; Replica Tiles</span>
+            <span class="muted" id="k8s-meta">spec: 2 · available: 2 · ready: 2</span>
+          </div>
+
+          <div class="event-terminal pod-terminal" id="k8s-pod-terminal">
+            <div class="term-line">[K8S] kubectl get pods -n default -l app=web-app -w</div>
+            <div class="term-line">[K8S] web-app-pod-1    1/1    Running    0    4m20s</div>
+            <div class="term-line">[K8S] web-app-pod-2    1/1    Running    0    4m20s</div>
+          </div>
+
+          <div class="pod-tiles-grid mt-12" id="pod-tiles-container">
+            <div class="metric-card" style="border-left:3px solid var(--color-green);">
+              <div class="card-head">web-app-pod-1</div>
+              <div class="card-val green-txt" style="font-size:1.1rem;margin-top:4px;">Running</div>
+              <div class="card-sub">Ready: 1/1</div>
+            </div>
+            <div class="metric-card" style="border-left:3px solid var(--color-green);">
+              <div class="card-head">web-app-pod-2</div>
+              <div class="card-val green-txt" style="font-size:1.1rem;margin-top:4px;">Running</div>
+              <div class="card-sub">Ready: 1/1</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel 7: Prometheus & Grafana Observability Charts -->
+        <div class="panel-card">
+          <div class="card-header-bar">
+            <span class="card-title">7. Prometheus Observability Metrics &amp; Forecast Charts</span>
+            <span class="pill green">POLLING LIVE</span>
+          </div>
+
+          <div class="chart-box">
+            <span class="chart-subtitle">Workload Throughput vs. EMA-TAP 30s Forecast</span>
+            <canvas id="chart-workload-overlay" height="110"></canvas>
+          </div>
+
+          <div class="chart-box mt-12">
+            <span class="chart-subtitle">CPU Utilization % vs. P95 Latency (SLA Threshold: 1.0s)</span>
+            <canvas id="chart-monitoring-series" height="110"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

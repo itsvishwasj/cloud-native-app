@@ -62,6 +62,10 @@ spec:
         app: web-app
         tier: frontend
         environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "3000"
     spec:
       # containers: list of containers that run inside each Pod.
       containers:

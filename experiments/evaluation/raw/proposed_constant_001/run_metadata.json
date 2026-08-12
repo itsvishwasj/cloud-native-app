@@ -1,0 +1,12 @@
+{
+  "run_id": "proposed_constant_001",
+  "system": "proposed",
+  "workload": "constant",
+  "repetition": 1,
+  "start_time_iso": "2026-08-09T18:36:31.256089",
+  "start_time_epoch": 1786280791.2562182,
+  "end_time_iso": "2026-08-09T18:38:34.975103",
+  "end_time_epoch": 1786280914.9755023,
+  "duration_sec": 123.72,
+  "k6_exit_code": 0
+}

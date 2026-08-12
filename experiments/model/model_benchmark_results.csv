@@ -1,0 +1,22 @@
+Model,Horizon,MAE,RMSE,MAPE,R2,Inference_MS
+Persistence (Baseline 1),15s,1.2803,1.8578,201.24,0.4817,0.0012
+Moving Average (Baseline 2),15s,1.8273,2.2445,358.64,0.2436,0.0013
+Trend Extrapolation (Baseline 3),15s,1.5661,2.0496,205.87,0.3692,0.0031
+EMA-TAP (Final Selected),15s,1.461,1.9483,205.77,0.43,0.0013
+Ridge Regression,15s,2.1945,2.6424,583.83,-0.0484,0.0124
+Random Forest,15s,2.3929,2.9431,661.84,-0.3007,0.036
+XGBoost,15s,2.3487,2.9298,716.89,-0.2889,0.0179
+Persistence (Baseline 1),30s,2.0832,2.5835,392.57,-0.0393,0.0002
+Moving Average (Baseline 2),30s,2.4264,2.894,477.61,-0.3042,0.0006
+Trend Extrapolation (Baseline 3),30s,2.1628,2.6062,394.44,-0.0576,0.0018
+EMA-TAP (Final Selected),30s,2.1164,2.5844,397.88,-0.0401,0.0011
+Ridge Regression,30s,2.9137,3.5356,627.37,-0.9466,0.008
+Random Forest,30s,3.6181,4.1195,815.83,-1.6426,0.0479
+XGBoost,30s,3.2605,3.8429,843.33,-1.2996,0.0174
+Persistence (Baseline 1),60s,2.9506,3.5125,447.07,-1.0221,0.0002
+Moving Average (Baseline 2),60s,2.9866,3.4892,369.88,-0.9953,0.0007
+Trend Extrapolation (Baseline 3),60s,2.9506,3.5125,447.07,-1.0221,0.0019
+EMA-TAP (Final Selected),60s,2.9506,3.5125,447.07,-1.0221,0.0013
+Ridge Regression,60s,4.4144,5.3349,759.54,-3.6645,0.0075
+Random Forest,60s,5.3797,6.1906,829.42,-5.281,0.0701
+XGBoost,60s,4.2522,4.9053,850.38,-2.9436,0.0184

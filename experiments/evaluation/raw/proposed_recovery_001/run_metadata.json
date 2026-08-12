@@ -1,0 +1,12 @@
+{
+  "run_id": "proposed_recovery_001",
+  "system": "proposed",
+  "workload": "recovery",
+  "repetition": 1,
+  "start_time_iso": "2026-08-09T18:56:04.823712",
+  "start_time_epoch": 1786281964.8239405,
+  "end_time_iso": "2026-08-09T19:04:36.797139",
+  "end_time_epoch": 1786282476.7978668,
+  "duration_sec": 511.97,
+  "k6_exit_code": 99
+}

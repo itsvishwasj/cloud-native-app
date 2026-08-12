@@ -1,0 +1,6 @@
+workload,hpa_p95_sec,proposed_p95_sec,p95_diff_sec,hpa_p99_sec,proposed_p99_sec,p99_diff_sec,hpa_sla_violation_rate,proposed_sla_violation_rate,hpa_decision_delay_sec,proposed_lead_time_sec,hpa_replica_seconds,proposed_replica_seconds,replica_sec_diff
+constant,3.871,0.535,-3.336,4.427,0.6,-3.827,0.826,0.0,80.1,30.0,240.0,270.0,30.0
+step,2.286,0.535,-1.751,3.302,0.6,-2.702,0.871,0.0,0.0,30.0,1990.0,720.0,-1270.0
+spike,7.286,0.535,-6.751,9.897,0.6,-9.297,0.936,0.0,75.1,30.0,950.0,490.0,-460.0
+sustained,9.716,0.535,-9.181,14.359,0.6,-13.759,0.839,0.0,31.9,30.0,1540.0,640.0,-900.0
+recovery,7.857,0.535,-7.322,10.101,0.6,-9.501,0.877,0.0,116.2,30.0,2510.0,930.0,-1580.0

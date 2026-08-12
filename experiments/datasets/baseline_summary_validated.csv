@@ -1,0 +1,6 @@
+experiment_id,samples_collected,avg_rps,peak_rps,avg_cpu_percent,peak_cpu_percent,avg_memory_mb,peak_memory_mb,avg_active_pods,peak_active_pods,p95_latency_avg_sec,p95_latency_max_sec,p99_latency_avg_sec,p99_latency_max_sec,avg_error_rate,sla_violation_rate,decision_delay_sec,pod_scaling_delay_sec,availability_delay_sec,scale_up_duration_sec,cpu_overshoot_pct_sec,under_provisioning_rep_sec,over_provisioning_rep_sec
+baseline_constant_001,23,2.69,5.12,187.6,409.4,295.7,336.2,2.09,4,3.871,7.676,4.427,9.535,0.0,0.826,80.1,0.0,0.0,80.1,16697.9,0.0,0.0
+baseline_step_001,62,6.3,15.27,164.7,257.4,512.1,803.0,6.42,10,2.286,3.642,3.302,4.857,0.0,0.871,0.0,0.0,0.0,0.0,37330.4,0.0,0.0
+baseline_spike_001,47,3.54,7.72,149.8,385.5,451.9,649.6,4.04,8,7.286,14.585,9.897,24.355,0.0,0.936,75.1,0.0,0.0,75.1,24600.2,0.0,0.0
+baseline_sustained_001,56,8.47,15.33,201.9,344.7,725.2,1027.3,5.5,10,9.716,26.154,14.359,29.231,0.0,0.839,31.9,0.0,59.1,91.0,44896.9,55.0,0.0
+baseline_recovery_001,81,4.12,8.75,119.7,263.4,722.3,1249.7,6.2,10,7.857,26.712,10.101,29.343,0.0,0.877,116.2,0.0,59.2,175.4,31794.8,220.0,0.0

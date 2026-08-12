@@ -1,0 +1,42 @@
+[
+  {
+    "experiment_id": "baseline_constant_001",
+    "samples_replayed": 23,
+    "predictive_scale_up_events": 2,
+    "predictive_scale_down_events": 0,
+    "max_predictive_replicas": 4,
+    "avg_predictive_replicas": 2.96
+  },
+  {
+    "experiment_id": "baseline_step_001",
+    "samples_replayed": 62,
+    "predictive_scale_up_events": 7,
+    "predictive_scale_down_events": 0,
+    "max_predictive_replicas": 10,
+    "avg_predictive_replicas": 5.13
+  },
+  {
+    "experiment_id": "baseline_spike_001",
+    "samples_replayed": 47,
+    "predictive_scale_up_events": 3,
+    "predictive_scale_down_events": 0,
+    "max_predictive_replicas": 6,
+    "avg_predictive_replicas": 4.17
+  },
+  {
+    "experiment_id": "baseline_sustained_001",
+    "samples_replayed": 56,
+    "predictive_scale_up_events": 4,
+    "predictive_scale_down_events": 0,
+    "max_predictive_replicas": 10,
+    "avg_predictive_replicas": 7.21
+  },
+  {
+    "experiment_id": "baseline_recovery_001",
+    "samples_replayed": 81,
+    "predictive_scale_up_events": 4,
+    "predictive_scale_down_events": 0,
+    "max_predictive_replicas": 7,
+    "avg_predictive_replicas": 5.25
+  }
+]

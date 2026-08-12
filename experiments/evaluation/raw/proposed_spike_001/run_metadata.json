@@ -1,0 +1,12 @@
+{
+  "run_id": "proposed_spike_001",
+  "system": "proposed",
+  "workload": "spike",
+  "repetition": 1,
+  "start_time_iso": "2026-08-09T18:45:24.590103",
+  "start_time_epoch": 1786281324.5902078,
+  "end_time_iso": "2026-08-09T18:49:40.962721",
+  "end_time_epoch": 1786281580.9628174,
+  "duration_sec": 256.37,
+  "k6_exit_code": 99
+}

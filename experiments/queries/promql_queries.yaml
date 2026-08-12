@@ -1,0 +1,55 @@
+queries:
+  request_rate_rps:
+    promql: 'sum(rate(http_requests_total{app="web-app"}[2m])) or vector(0)'
+    description: "Total HTTP requests per second across all application pods"
+    unit: "rps"
+
+  cpu_utilization_percent:
+    promql: '(sum(rate(process_cpu_seconds_total{app="web-app"}[2m])) / sum(kube_pod_container_resource_requests{resource="cpu", container="web-app"})) * 100 or vector(0)'
+    description: "Average CPU utilization percentage relative to active pod CPU requests (100m per pod)"
+    unit: "percent"
+
+  process_cpu_cores:
+    promql: 'sum(rate(process_cpu_seconds_total{app="web-app"}[2m])) or vector(0)'
+    description: "Total CPU cores utilized by application processes"
+    unit: "cores"
+
+  memory_utilization_bytes:
+    promql: 'sum(process_resident_memory_bytes{app="web-app"}) or vector(0)'
+    description: "Total resident set memory (RSS) consumed across application pods"
+    unit: "bytes"
+
+  current_replicas:
+    promql: 'kube_deployment_status_replicas{deployment="web-app"} or vector(0)'
+    description: "Current actual replica count of the web-app Deployment status"
+    unit: "count"
+
+  deployment_spec_replicas:
+    promql: 'kube_deployment_spec_replicas{deployment="web-app"} or vector(0)'
+    description: "Desired replica count specified in Deployment spec"
+    unit: "count"
+
+  hpa_desired_replicas:
+    promql: 'kube_horizontalpodautoscaler_status_desired_replicas{horizontalpodautoscaler="web-app-hpa"} or vector(0)'
+    description: "Target replica count computed and requested by HPA control-plane"
+    unit: "count"
+
+  available_replicas:
+    promql: 'kube_deployment_status_replicas_available{deployment="web-app"} or vector(0)'
+    description: "Number of available/ready web-app pod replicas"
+    unit: "count"
+
+  p95_latency_seconds:
+    promql: 'histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{app="web-app"}[2m])) by (le)) or vector(0)'
+    description: "95th percentile end-to-end HTTP request duration in seconds"
+    unit: "seconds"
+
+  p99_latency_seconds:
+    promql: 'histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{app="web-app"}[2m])) by (le)) or vector(0)'
+    description: "99th percentile end-to-end HTTP request duration in seconds"
+    unit: "seconds"
+
+  error_rate:
+    promql: '(sum(rate(http_requests_total{app="web-app", status_code=~"5.*"}[2m])) / sum(rate(http_requests_total{app="web-app"}[2m]))) or vector(0)'
+    description: "Fraction of HTTP requests returning 5xx server errors"
+    unit: "ratio"

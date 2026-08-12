@@ -1,0 +1,19 @@
+experiment_id: "exp_sustained_high_001"
+workload_type: "sustained_high_load"
+duration: "5m"
+target_rps: 14
+ramp_pattern: "sustained"
+endpoint: "/stress"
+stress_duration_ms: 500
+sampling_interval_seconds: 5
+hpa_configuration:
+  min_replicas: 2
+  max_replicas: 10
+  cpu_target_percent: 50
+  scale_up_stabilization_seconds: 30
+  scale_down_stabilization_seconds: 300
+environment_metadata:
+  git_commit: "ff13106"
+  kubernetes_version: "v1.35.1"
+  minikube_version: "v1.38.1"
+  prometheus_version: "v3.13.2"

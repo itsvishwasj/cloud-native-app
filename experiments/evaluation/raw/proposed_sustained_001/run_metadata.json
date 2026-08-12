@@ -1,0 +1,12 @@
+{
+  "run_id": "proposed_sustained_001",
+  "system": "proposed",
+  "workload": "sustained",
+  "repetition": 1,
+  "start_time_iso": "2026-08-09T18:50:05.693853",
+  "start_time_epoch": 1786281605.6939573,
+  "end_time_iso": "2026-08-09T18:55:37.254958",
+  "end_time_epoch": 1786281937.2551646,
+  "duration_sec": 331.56,
+  "k6_exit_code": 99
+}

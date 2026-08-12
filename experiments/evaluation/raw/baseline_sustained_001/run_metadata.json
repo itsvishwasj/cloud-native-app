@@ -1,0 +1,14 @@
+{
+  "experiment_id": "baseline_sustained_001",
+  "start_time_iso": "2026-08-09T11:25:23.386599+00:00",
+  "end_time_iso": "2026-08-09T11:30:18.233871+00:00",
+  "sampling_interval_seconds": 5,
+  "total_samples_collected": 56,
+  "dataset_csv": "experiments/datasets/baseline_sustained_001.csv",
+  "prometheus_url": "http://localhost:9090",
+  "hpa_configuration": {
+    "min_replicas": 2,
+    "max_replicas": 10,
+    "cpu_target_percent": 50
+  }
+}

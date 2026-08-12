@@ -1,0 +1,14 @@
+{
+  "experiment_id": "baseline_spike_001",
+  "start_time_iso": "2026-08-09T11:19:52.418048+00:00",
+  "end_time_iso": "2026-08-09T11:24:01.523295+00:00",
+  "sampling_interval_seconds": 5,
+  "total_samples_collected": 47,
+  "dataset_csv": "experiments/datasets/baseline_spike_001.csv",
+  "prometheus_url": "http://localhost:9090",
+  "hpa_configuration": {
+    "min_replicas": 2,
+    "max_replicas": 10,
+    "cpu_target_percent": 50
+  }
+}

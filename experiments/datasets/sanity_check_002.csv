@@ -1,0 +1,3 @@
+timestamp,timestamp_epoch,experiment_id,request_rate_rps,cpu_utilization_percent,process_cpu_cores,memory_utilization_bytes,current_replicas,deployment_spec_replicas,hpa_desired_replicas,available_replicas,p95_latency_seconds,p99_latency_seconds,error_rate
+2026-08-09T11:01:51.760356+00:00,1786273311.76,sanity_check_002,3.45,250.953425,0.501907,293179392.0,2.0,2.0,2.0,2.0,4.684451,4.93689,0.0
+2026-08-09T11:01:57.004334+00:00,1786273317.004,sanity_check_002,3.45,250.953425,0.501907,226144256.0,2.0,2.0,2.0,2.0,4.684451,4.93689,0.0

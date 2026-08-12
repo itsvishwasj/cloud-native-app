@@ -1,0 +1,9 @@
+{
+  "experiment_id": "sanity_check_001",
+  "start_time_iso": "2026-08-09T10:53:32.572571+00:00",
+  "end_time_iso": "2026-08-09T10:53:54.062416+00:00",
+  "sampling_interval_seconds": 5,
+  "total_samples_collected": 4,
+  "dataset_csv": "experiments/datasets/sanity_check_001.csv",
+  "prometheus_url": "http://localhost:9090"
+}

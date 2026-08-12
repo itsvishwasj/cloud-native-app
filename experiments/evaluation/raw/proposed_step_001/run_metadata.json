@@ -1,0 +1,12 @@
+{
+  "run_id": "proposed_step_001",
+  "system": "proposed",
+  "workload": "step",
+  "repetition": 1,
+  "start_time_iso": "2026-08-09T18:38:58.722659",
+  "start_time_epoch": 1786280938.7227604,
+  "end_time_iso": "2026-08-09T18:44:58.725599",
+  "end_time_epoch": 1786281298.7257142,
+  "duration_sec": 360.0,
+  "k6_exit_code": 99
+}
