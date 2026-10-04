@@ -1,0 +1,55 @@
+{
+  "model_name": "EMA-TAP (Trend-Adjusted Exponential Moving Average Predictor)",
+  "selection_method": "Grid search on validation workload using minimum MAE, with RMSE as tie-breaker",
+  "validation_workload": "baseline_sustained_001",
+  "test_workload": "baseline_recovery_001",
+  "momentum_lag_samples": 3,
+  "sampling_interval_seconds": 5.45,
+  "selected_parameters": {
+    "15s": {
+      "alpha": 0.1,
+      "beta": 0.0,
+      "validation_mae": 2.0138330263157895,
+      "validation_rmse": 2.9308707175713296
+    },
+    "30s": {
+      "alpha": 0.9,
+      "beta": 0.1,
+      "validation_mae": 2.6411457316404263,
+      "validation_rmse": 3.348648978911667
+    },
+    "60s": {
+      "alpha": 0.5,
+      "beta": 0.8,
+      "validation_mae": 3.609545223957207,
+      "validation_rmse": 4.739588892780563
+    }
+  },
+  "parameter_search": {
+    "alpha_values": [
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9
+    ],
+    "beta_values": [
+      0.0,
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9,
+      1.0
+    ]
+  },
+  "test_set_used_during_tuning": false
+}

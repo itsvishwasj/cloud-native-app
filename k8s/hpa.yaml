@@ -1,92 +1,19 @@
-# =============================================================================
-# Horizontal Pod Autoscaler (HPA) — web-app-hpa
-# =============================================================================
-# The HPA automatically adjusts the number of Pod replicas in a Deployment
-# (or ReplicaSet / StatefulSet) based on observed metrics such as CPU or
-# memory utilisation.  It runs as a control loop inside the kube-controller-
-# manager, checking metrics every 15 seconds by default.
-#
-# Prerequisites:
-#   – The Metrics Server must be running in the cluster.
-#     On Minikube:  minikube addons enable metrics-server
-#   – Pods must define resource requests (see deployment.yaml) so the HPA
-#     can compute utilisation percentages.
-# =============================================================================
-
-# -- API version: autoscaling/v2 is the stable, feature-rich HPA API.
-# It supports multiple metrics, custom metrics, and external metrics.
 apiVersion: autoscaling/v2
-
-# -- Kind: the resource type.
 kind: HorizontalPodAutoscaler
-
-# -- Metadata: descriptive information about the HPA.
 metadata:
-  # Name of the HPA object.
-  name: web-app-hpa
-  # Namespace: must match the Deployment it targets.
+  name: web-app
   namespace: default
-  # Labels for the HPA object itself.
-  labels:
-    app: web-app
-    tier: frontend
-    environment: production
-    managed-by: kubectl
-
-# -- Spec: defines the autoscaling behaviour.
 spec:
-  # scaleTargetRef: the resource the HPA controls.
-  # The HPA will adjust the replica count of this Deployment.
-  scaleTargetRef:
-    apiVersion: apps/v1      # API group of the target resource
-    kind: Deployment         # Resource type to scale
-    name: web-app            # Must match the Deployment's metadata.name
-
-  # minReplicas: the minimum number of replicas the HPA will maintain.
-  # Never set this below 2 in production to preserve high availability.
   minReplicas: 2
-
-  # maxReplicas: the upper bound.  The HPA will never scale beyond this.
-  # Size this based on capacity planning and cluster resource limits.
   maxReplicas: 10
-
-  # metrics: the list of metrics the HPA evaluates to decide scaling.
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-app
   metrics:
-    # ---- Metric 1: CPU Utilisation ----
-    - type: Resource           # "Resource" = built-in CPU / memory metric
+    - type: Resource
       resource:
-        name: cpu              # Metric name (cpu or memory)
+        name: cpu
         target:
-          # type: Utilization means the target is expressed as a percentage
-          # of the resource *request* (not limit).
           type: Utilization
-          # averageUtilization: the desired average CPU utilisation across
-          # all Pods.  If the observed average exceeds 50%, the HPA scales
-          # up; if it drops well below 50%, it scales down.
-          averageUtilization: 50
-
-  # behavior: fine-tune how fast the HPA scales up and scales down.
-  # This prevents thrashing (rapid up/down oscillations).
-  behavior:
-    # scaleUp: rules governing scale-up speed.
-    scaleUp:
-      # stabilizationWindowSeconds: after a scale-up decision, the HPA
-      # waits this many seconds before re-evaluating to avoid premature
-      # additional scale-ups.
-      stabilizationWindowSeconds: 30
-      policies:
-        # Allow adding at most 2 Pods per 60-second window.
-        - type: Pods
-          value: 2
-          periodSeconds: 60
-
-    # scaleDown: rules governing scale-down speed.
-    scaleDown:
-      # stabilizationWindowSeconds: a longer window (5 min) for scale-down
-      # prevents premature removal of Pods during transient load dips.
-      stabilizationWindowSeconds: 300
-      policies:
-        # Allow removing at most 1 Pod per 60-second window.
-        - type: Pods
-          value: 1
-          periodSeconds: 60
+          averageUtilization: 70
