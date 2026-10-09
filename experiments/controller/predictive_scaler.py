@@ -1,248 +1,1211 @@
 #!/usr/bin/env python3
-"""
-Predictive / Adaptive Kubernetes Scaling Controller.
-Queries Prometheus telemetry, invokes EMA-TAP workload predictor, calculates safe pod capacity,
-applies stabilization & cooldown guardrails, and scales Kubernetes Deployment.
-Supports --dry-run (simulation/logging) and --live (Kubernetes scaling actuation) modes.
-"""
 
 import argparse
 import json
 import math
 import os
+import signal
 import subprocess
 import sys
 import time
-import urllib.parse
-import urllib.request
-import numpy as np
+from datetime import datetime, timezone
+
 import pandas as pd
+import requests
+from prometheus_client import Gauge, start_http_server
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "model"))
-from predict_service import WorkloadPredictor
 
-LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+# ---------------------------------------------------------------------
+# Project path
+# ---------------------------------------------------------------------
 
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../..")
+)
+
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+
+from experiments.model.predict_service import WorkloadPredictor
+
+
+# ---------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------
+
+PROMETHEUS_URL = os.getenv(
+    "PROMETHEUS_URL",
+    "http://localhost:9090"
+)
+
+METRICS_PORT = int(
+    os.getenv("EMA_TAP_METRICS_PORT", "8000")
+)
+
+POLL_INTERVAL_SECONDS = float(
+    os.getenv("EMA_TAP_POLL_INTERVAL", "5")
+)
+
+SAFE_RPS_PER_POD = float(
+    os.getenv("EMA_TAP_SAFE_RPS_PER_POD", "1.5")
+)
+
+SAFETY_FACTOR = float(
+    os.getenv("EMA_TAP_SAFETY_FACTOR", "1.15")
+)
+
+MIN_REPLICAS = int(
+    os.getenv("EMA_TAP_MIN_REPLICAS", "2")
+)
+
+MAX_REPLICAS = int(
+    os.getenv("EMA_TAP_MAX_REPLICAS", "10")
+)
+
+COOLDOWN_SECONDS = int(
+    os.getenv("EMA_TAP_COOLDOWN_SECONDS", "30")
+)
+
+LOG_FILE = os.getenv(
+    "EMA_TAP_DECISION_LOG",
+    "experiments/controller/decision_log.jsonl"
+)
+
+
+# ---------------------------------------------------------------------
+# Prometheus query
+# ---------------------------------------------------------------------
+
+PROM_QUERY = """
+sum(
+    rate(
+        http_requests_total{
+            job="web-app-service",
+            status_code=~"2.."
+        }[2m]
+    )
+) or vector(0)
+"""
+
+
+# ---------------------------------------------------------------------
+# Offline model evaluation metrics
+#
+# These are NOT live measurements.
+#
+# They come from the tuned-vs-original evaluation:
+#
+# Workload:
+#   baseline_recovery_001
+#
+# Horizon:
+#   30 seconds
+#
+# Tuned EMA-TAP:
+#   MAE  = 2.1124 RPS
+#   RMSE = 2.5840 RPS
+#   R2   = -0.0398
+# ---------------------------------------------------------------------
+
+MODEL_EVAL_MAE_30S = 2.1124
+MODEL_EVAL_RMSE_30S = 2.5840
+MODEL_EVAL_R2_30S = -0.0398
+
+
+# ---------------------------------------------------------------------
+# Prometheus exporter metrics
+# ---------------------------------------------------------------------
+
+actual_rps_metric = Gauge(
+    "ema_tap_actual_rps",
+    "Current observed request rate in requests per second"
+)
+
+predicted_15_metric = Gauge(
+    "ema_tap_predicted_rps_15s",
+    "EMA-TAP predicted request rate 15 seconds ahead"
+)
+
+predicted_30_metric = Gauge(
+    "ema_tap_predicted_rps_30s",
+    "EMA-TAP predicted request rate 30 seconds ahead"
+)
+
+predicted_60_metric = Gauge(
+    "ema_tap_predicted_rps_60s",
+    "EMA-TAP predicted request rate 60 seconds ahead"
+)
+
+current_replicas_metric = Gauge(
+    "ema_tap_current_replicas",
+    "Current number of application replicas"
+)
+
+calculated_replicas_metric = Gauge(
+    "ema_tap_calculated_replicas",
+    "Replica count calculated from predicted workload"
+)
+
+desired_replicas_metric = Gauge(
+    "ema_tap_desired_replicas",
+    "EMA-TAP desired replica count"
+)
+
+
+# ---------------------------------------------------------------------
+# Model parameters
+# ---------------------------------------------------------------------
+
+alpha_metric = Gauge(
+    "ema_tap_alpha",
+    "EMA smoothing parameter"
+)
+
+beta_15_metric = Gauge(
+    "ema_tap_beta_15s",
+    "EMA-TAP beta parameter for 15 second forecast"
+)
+
+beta_30_metric = Gauge(
+    "ema_tap_beta_30s",
+    "EMA-TAP beta parameter for 30 second forecast"
+)
+
+beta_60_metric = Gauge(
+    "ema_tap_beta_60s",
+    "EMA-TAP beta parameter for 60 second forecast"
+)
+
+momentum_lag_metric = Gauge(
+    "ema_tap_momentum_lag_samples",
+    "Number of samples used for momentum calculation"
+)
+
+sampling_interval_metric = Gauge(
+    "ema_tap_sampling_interval_seconds",
+    "Telemetry sampling interval in seconds"
+)
+
+
+# ---------------------------------------------------------------------
+# Autoscaling parameters
+# ---------------------------------------------------------------------
+
+safe_rps_per_pod_metric = Gauge(
+    "ema_tap_safe_rps_per_pod",
+    "Safe request rate assumed per pod"
+)
+
+safety_factor_metric = Gauge(
+    "ema_tap_safety_factor",
+    "Autoscaling safety factor"
+)
+
+min_replicas_metric = Gauge(
+    "ema_tap_min_replicas",
+    "Minimum allowed replicas"
+)
+
+max_replicas_metric = Gauge(
+    "ema_tap_max_replicas",
+    "Maximum allowed replicas"
+)
+
+controller_cycle_metric = Gauge(
+    "ema_tap_controller_cycle_seconds",
+    "Controller polling interval"
+)
+
+
+# ---------------------------------------------------------------------
+# Model information
+# ---------------------------------------------------------------------
+
+controller_info_metric = Gauge(
+    "ema_tap_model_info",
+    "EMA-TAP model information; value is always 1",
+    ["version"]
+)
+
+
+# ---------------------------------------------------------------------
+# Controller action
+# ---------------------------------------------------------------------
+
+action_metric = Gauge(
+    "ema_tap_action",
+    "Current controller action: scale_up=1, scale_down=-1, none=0"
+)
+
+
+# ---------------------------------------------------------------------
+# Offline evaluation metrics
+# ---------------------------------------------------------------------
+
+model_mae_metric = Gauge(
+    "ema_tap_model_mae",
+    "Offline test MAE for tuned EMA-TAP 30 second horizon in RPS"
+)
+
+model_rmse_metric = Gauge(
+    "ema_tap_model_rmse",
+    "Offline test RMSE for tuned EMA-TAP 30 second horizon in RPS"
+)
+
+model_r2_metric = Gauge(
+    "ema_tap_model_r2",
+    "Offline test R2 for tuned EMA-TAP 30 second horizon"
+)
+
+
+# ---------------------------------------------------------------------
+# Evaluation metadata
+# ---------------------------------------------------------------------
+
+evaluation_horizon_metric = Gauge(
+    "ema_tap_evaluation_horizon_seconds",
+    "Forecast horizon used for the offline evaluation"
+)
+
+evaluation_info_metric = Gauge(
+    "ema_tap_evaluation_info",
+    "Offline model evaluation metadata; value is always 1",
+    ["workload", "evaluation_type"]
+)
+
+
+# ---------------------------------------------------------------------
+# Prometheus adapter
+# ---------------------------------------------------------------------
 
 class PrometheusAdapter:
-    def __init__(self, prom_url="http://localhost:9090"):
-        self.prom_url = prom_url
 
-    def query_instant(self, promql):
-        url = self.prom_url + "/api/v1/query?" + urllib.parse.urlencode({"query": promql})
-        try:
-            with urllib.request.urlopen(url, timeout=4) as res:
-                data = json.loads(res.read().decode("utf-8"))
-                if data.get("status") == "success":
-                    results = data.get("data", {}).get("result", [])
-                    if results:
-                        return float(results[0]["value"][1])
-        except Exception:
-            pass
-        return None
+    def __init__(self, url):
 
-    def get_recent_rps_history(self, num_samples=10):
-        query = 'sum(rate(http_requests_total{app="web-app"}[2m])) or vector(0)'
-        val = self.query_instant(query)
-        return val if val is not None else 0.0
+        self.url = url.rstrip("/")
 
+    def query(self, promql):
 
-class ReplicaCalculator:
-    def __init__(self, safe_rps_per_pod=1.5, safety_factor=1.15, min_replicas=2, max_replicas=10):
-        self.safe_rps_per_pod = safe_rps_per_pod
-        self.safety_factor = safety_factor
-        self.min_replicas = min_replicas
-        self.max_replicas = max_replicas
+        response = requests.get(
+            f"{self.url}/api/v1/query",
+            params={
+                "query": promql
+            },
+            timeout=5
+        )
 
-    def calculate(self, predicted_rps_30s):
-        if predicted_rps_30s is None or predicted_rps_30s < 0:
-            return self.min_replicas
+        response.raise_for_status()
 
-        raw_req = (predicted_rps_30s / self.safe_rps_per_pod) * self.safety_factor
-        unbounded_replicas = int(math.ceil(raw_req)) if raw_req > 0 else self.min_replicas
-        target_replicas = max(self.min_replicas, min(self.max_replicas, unbounded_replicas))
-        return target_replicas
+        payload = response.json()
+
+        if payload.get("status") != "success":
+
+            raise RuntimeError(
+                f"Prometheus query failed: {payload}"
+            )
+
+        results = payload["data"]["result"]
+
+        if not results:
+
+            return 0.0
+
+        return float(
+            results[0]["value"][1]
+        )
 
 
-class ScalingDecisionEngine:
-    def __init__(self, cooldown_sec=30, stabilization_sec=180):
-        self.cooldown_sec = cooldown_sec
-        self.stabilization_sec = stabilization_sec
-        self.last_scale_up_time = 0.0
-        self.last_scale_down_demand_time = 0.0
-        self.pending_scale_down_replicas = None
+# ---------------------------------------------------------------------
+# Predictive scaler
+# ---------------------------------------------------------------------
 
-    def evaluate(self, current_replicas, calculated_replicas, now_time):
-        action = "none"
-        reason = "steady_state"
-        final_desired = current_replicas
+class PredictiveScaler:
 
-        if calculated_replicas > current_replicas:
-            if (now_time - self.last_scale_up_time) >= self.cooldown_sec:
-                action = "scale_up"
-                reason = f"predicted_workload_increase (target={calculated_replicas})"
-                final_desired = calculated_replicas
-                self.last_scale_up_time = now_time
-                self.pending_scale_down_replicas = None
-            else:
-                action = "cooldown_active"
-                reason = f"scale_up_cooldown_active ({int(self.cooldown_sec - (now_time - self.last_scale_up_time))}s remaining)"
+    def __init__(self, dry_run=True):
 
-        elif calculated_replicas < current_replicas:
-            if self.pending_scale_down_replicas != calculated_replicas:
-                self.pending_scale_down_replicas = calculated_replicas
-                self.last_scale_down_demand_time = now_time
-                action = "stabilization_pending"
-                reason = f"scale_down_stabilization_timer_started (target={calculated_replicas})"
-            else:
-                elapsed = now_time - self.last_scale_down_demand_time
-                if elapsed >= self.stabilization_sec:
-                    action = "scale_down"
-                    reason = f"scale_down_stabilization_elapsed ({int(elapsed)}s >= {self.stabilization_sec}s)"
-                    final_desired = calculated_replicas
-                    self.pending_scale_down_replicas = None
-                else:
-                    action = "stabilization_active"
-                    reason = f"scale_down_stabilization_active ({int(self.stabilization_sec - elapsed)}s remaining)"
-        else:
-            self.pending_scale_down_replicas = None
-
-        return final_desired, action, reason
-
-
-class KubernetesActuator:
-    def __init__(self, deployment="web-app", namespace="default", dry_run=True):
-        self.deployment = deployment
-        self.namespace = namespace
         self.dry_run = dry_run
 
-    def get_current_replicas(self):
-        try:
-            cmd = ["kubectl", "get", "deployment", self.deployment, "-n", self.namespace, "-o", "jsonpath={.spec.replicas}"]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-            return int(res.stdout.strip())
-        except Exception:
-            return 2
+        self.prometheus = PrometheusAdapter(
+            PROMETHEUS_URL
+        )
 
-    def scale_deployment(self, target_replicas):
-        if self.dry_run:
-            print(f"[DRY-RUN] Would scale Deployment/{self.deployment} to {target_replicas} replicas.")
-            return True
-        try:
-            cmd = ["kubectl", "scale", "deployment", self.deployment, "-n", self.namespace, f"--replicas={target_replicas}"]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print(f"[LIVE] Scaled Deployment/{self.deployment} to {target_replicas} replicas.")
-            return True
-        except Exception as e:
-            print(f"[ERROR] Failed to scale Kubernetes Deployment: {e}", file=sys.stderr)
-            return False
-
-
-class PredictiveScalerController:
-    def __init__(self, mode="dry-run", prom_url="http://localhost:9090", deployment="web-app", namespace="default",
-                 safe_rps=1.5, safety_factor=1.15, min_rep=2, max_rep=10, cooldown=30, stabilization=180, log_path=None):
-        self.mode = mode
-        self.dry_run = (mode == "dry-run")
-        self.prom = PrometheusAdapter(prom_url)
+        # Loads the current model artifact:
+        #
+        # experiments/model/artifacts/
+        # trend_predictor_config.json
+        #
         self.predictor = WorkloadPredictor()
-        self.calculator = ReplicaCalculator(safe_rps, safety_factor, min_rep, max_rep)
-        self.engine = ScalingDecisionEngine(cooldown, stabilization)
-        self.actuator = KubernetesActuator(deployment, namespace, self.dry_run)
-        
-        os.makedirs(LOG_DIR, exist_ok=True)
-        self.log_path = log_path or os.path.join(LOG_DIR, "decision_log.jsonl")
-        self.recent_history = []
 
-    def step(self):
-        t0 = time.time()
-        curr_rps = self.prom.get_recent_rps_history()
-        
-        self.recent_history.append({"request_rate_rps": curr_rps})
-        if len(self.recent_history) > 20:
-            self.recent_history.pop(0)
+        self.config = self.predictor.config
 
-        history_df = pd.DataFrame(self.recent_history)
+        self.history = []
 
-        if curr_rps is None:
-            print("[WARN] Telemetry unavailable; maintaining current replicas.", file=sys.stderr)
+        self.last_scaling_time = 0
+
+        self.running = True
+
+        self.current_replicas = MIN_REPLICAS
+
+        # -------------------------------------------------------------
+        # Model configuration
+        # -------------------------------------------------------------
+
+        self.alpha = float(
+            self.config.get(
+                "alpha_smoothing",
+                0.9
+            )
+        )
+
+        self.momentum_lag = int(
+            self.config.get(
+                "momentum_lag_samples",
+                3
+            )
+        )
+
+        self.beta_weights = self.config.get(
+            "beta_weights",
+            {
+                "15s": 0.5,
+                "30s": 0.1,
+                "60s": 0.0
+            }
+        )
+
+        self.sampling_interval = float(
+            self.config.get(
+                "sampling_interval_seconds",
+                5.45
+            )
+        )
+
+        self.model_version = self.config.get(
+            "version",
+            "unknown"
+        )
+
+        # -------------------------------------------------------------
+        # Export static model parameters
+        # -------------------------------------------------------------
+
+        alpha_metric.set(
+            self.alpha
+        )
+
+        beta_15_metric.set(
+            float(
+                self.beta_weights.get(
+                    "15s",
+                    0
+                )
+            )
+        )
+
+        beta_30_metric.set(
+            float(
+                self.beta_weights.get(
+                    "30s",
+                    0
+                )
+            )
+        )
+
+        beta_60_metric.set(
+            float(
+                self.beta_weights.get(
+                    "60s",
+                    0
+                )
+            )
+        )
+
+        momentum_lag_metric.set(
+            self.momentum_lag
+        )
+
+        sampling_interval_metric.set(
+            self.sampling_interval
+        )
+
+        # -------------------------------------------------------------
+        # Export autoscaling parameters
+        # -------------------------------------------------------------
+
+        safe_rps_per_pod_metric.set(
+            SAFE_RPS_PER_POD
+        )
+
+        safety_factor_metric.set(
+            SAFETY_FACTOR
+        )
+
+        min_replicas_metric.set(
+            MIN_REPLICAS
+        )
+
+        max_replicas_metric.set(
+            MAX_REPLICAS
+        )
+
+        controller_cycle_metric.set(
+            POLL_INTERVAL_SECONDS
+        )
+
+        # -------------------------------------------------------------
+        # Export model information
+        # -------------------------------------------------------------
+
+        controller_info_metric.labels(
+            version=self.model_version
+        ).set(1)
+
+        # -------------------------------------------------------------
+        # Export offline evaluation metrics
+        # -------------------------------------------------------------
+
+        model_mae_metric.set(
+            MODEL_EVAL_MAE_30S
+        )
+
+        model_rmse_metric.set(
+            MODEL_EVAL_RMSE_30S
+        )
+
+        model_r2_metric.set(
+            MODEL_EVAL_R2_30S
+        )
+
+        evaluation_horizon_metric.set(
+            30
+        )
+
+        evaluation_info_metric.labels(
+            workload="baseline_recovery_001",
+            evaluation_type="tuned_test"
+        ).set(1)
+
+        # -------------------------------------------------------------
+        # Startup information
+        # -------------------------------------------------------------
+
+        print("=" * 70)
+        print(
+            "EMA-TAP PREDICTIVE AUTOSCALER"
+        )
+        print("=" * 70)
+
+        print(
+            f"Model version       : "
+            f"{self.model_version}"
+        )
+
+        print(
+            f"Alpha               : "
+            f"{self.alpha}"
+        )
+
+        print(
+            f"Momentum lag        : "
+            f"{self.momentum_lag}"
+        )
+
+        print(
+            f"Beta 15s            : "
+            f"{self.beta_weights.get('15s', 0)}"
+        )
+
+        print(
+            f"Beta 30s            : "
+            f"{self.beta_weights.get('30s', 0)}"
+        )
+
+        print(
+            f"Beta 60s            : "
+            f"{self.beta_weights.get('60s', 0)}"
+        )
+
+        print(
+            f"Sampling interval   : "
+            f"{self.sampling_interval}s"
+        )
+
+        print(
+            f"Safe RPS / pod      : "
+            f"{SAFE_RPS_PER_POD}"
+        )
+
+        print(
+            f"Safety factor       : "
+            f"{SAFETY_FACTOR}"
+        )
+
+        print(
+            f"Min replicas        : "
+            f"{MIN_REPLICAS}"
+        )
+
+        print(
+            f"Max replicas        : "
+            f"{MAX_REPLICAS}"
+        )
+
+        print(
+            f"Dry run             : "
+            f"{self.dry_run}"
+        )
+
+        print(
+            f"Metrics port        : "
+            f"{METRICS_PORT}"
+        )
+
+        print("-" * 70)
+
+        print(
+            "OFFLINE MODEL EVALUATION"
+        )
+
+        print(
+            "Workload            : "
+            "baseline_recovery_001"
+        )
+
+        print(
+            "Horizon             : "
+            "30 seconds"
+        )
+
+        print(
+            f"MAE                 : "
+            f"{MODEL_EVAL_MAE_30S}"
+        )
+
+        print(
+            f"RMSE                : "
+            f"{MODEL_EVAL_RMSE_30S}"
+        )
+
+        print(
+            f"R2                  : "
+            f"{MODEL_EVAL_R2_30S}"
+        )
+
+        print("=" * 70)
+
+    # -----------------------------------------------------------------
+    # Get current RPS
+    # -----------------------------------------------------------------
+
+    def get_actual_rps(self):
+
+        try:
+
+            value = self.prometheus.query(
+                PROM_QUERY
+            )
+
+            return max(
+                0.0,
+                value
+            )
+
+        except Exception as exc:
+
+            print(
+                f"[WARN] Prometheus query failed: "
+                f"{exc}"
+            )
+
+            return 0.0
+
+    # -----------------------------------------------------------------
+    # Forecast
+    # -----------------------------------------------------------------
+
+    def predict(self):
+
+        if len(self.history) < 4:
+
+            return None
+
+        dataframe = pd.DataFrame(
+            {
+                "request_rate_rps":
+                    self.history
+            }
+        )
+
+        predictions = self.predictor.predict(
+            dataframe
+        )
+
+        return predictions
+
+    # -----------------------------------------------------------------
+    # Calculate replicas
+    # -----------------------------------------------------------------
+
+    def calculate_replicas(
+        self,
+        predicted_rps
+    ):
+
+        capacity_per_pod = (
+            SAFE_RPS_PER_POD
+            * SAFETY_FACTOR
+        )
+
+        calculated = math.ceil(
+            predicted_rps
+            / capacity_per_pod
+        )
+
+        calculated = max(
+            MIN_REPLICAS,
+            calculated
+        )
+
+        calculated = min(
+            MAX_REPLICAS,
+            calculated
+        )
+
+        return calculated
+
+    # -----------------------------------------------------------------
+    # Scaling decision
+    # -----------------------------------------------------------------
+
+    def decide(
+        self,
+        desired_replicas
+    ):
+
+        current = self.current_replicas
+
+        now = time.time()
+
+        if desired_replicas == current:
+
+            return (
+                current,
+                "none",
+                "steady_state"
+            )
+
+        if (
+            now - self.last_scaling_time
+            < COOLDOWN_SECONDS
+        ):
+
+            return (
+                current,
+                "none",
+                "cooldown"
+            )
+
+        if desired_replicas > current:
+
+            return (
+                desired_replicas,
+                "scale_up",
+                "predicted_workload_increase"
+            )
+
+        return (
+            desired_replicas,
+            "scale_down",
+            "predicted_workload_decrease"
+        )
+
+    # -----------------------------------------------------------------
+    # Apply scaling
+    # -----------------------------------------------------------------
+
+    def apply_scaling(
+        self,
+        desired_replicas,
+        action
+    ):
+
+        if action == "none":
+
             return
 
-        preds = self.predictor.predict(history_df)
-        pred_30s = preds.get("predicted_rps_30s", curr_rps)
+        if self.dry_run:
 
-        calc_replicas = self.calculator.calculate(pred_30s)
-        curr_replicas = self.actuator.get_current_replicas()
-        final_desired, action, reason = self.engine.evaluate(curr_replicas, calc_replicas, t0)
+            print(
+                f"[DRY-RUN] Would scale "
+                f"{self.current_replicas} -> "
+                f"{desired_replicas}"
+            )
 
-        if action in ["scale_up", "scale_down"] and final_desired != curr_replicas:
-            self.actuator.scale_deployment(final_desired)
+            self.current_replicas = (
+                desired_replicas
+            )
 
-        t_elapsed_ms = (time.time() - t0) * 1000.0
+        else:
 
-        log_entry = {
-            "timestamp": pd.Timestamp.now().isoformat(),
-            "timestamp_epoch": t0,
-            "mode": self.mode,
-            "current_rps": round(curr_rps, 2),
-            "predicted_rps_15s": preds.get("predicted_rps_15s", 0.0),
-            "predicted_rps_30s": pred_30s,
-            "predicted_rps_60s": preds.get("predicted_rps_60s", 0.0),
-            "current_replicas": curr_replicas,
-            "safe_rps_per_pod": self.calculator.safe_rps_per_pod,
-            "safety_factor": self.calculator.safety_factor,
-            "calculated_required_replicas": calc_replicas,
-            "final_desired_replicas": final_desired,
-            "action": action,
-            "reason": reason,
-            "controller_latency_ms": round(t_elapsed_ms, 3),
+            print(
+                f"[LIVE] Scaling "
+                f"{self.current_replicas} -> "
+                f"{desired_replicas}"
+            )
+
+            command = [
+                "kubectl",
+                "scale",
+                "deployment",
+                "web-app",
+                f"--replicas={desired_replicas}"
+            ]
+
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+
+                print(
+                    "[ERROR] kubectl scale failed:"
+                )
+
+                print(
+                    result.stderr
+                )
+
+                return
+
+            self.current_replicas = (
+                desired_replicas
+            )
+
+        self.last_scaling_time = (
+            time.time()
+        )
+
+    # -----------------------------------------------------------------
+    # Update live metrics
+    # -----------------------------------------------------------------
+
+    def update_metrics(
+        self,
+        actual_rps,
+        predictions,
+        calculated_replicas,
+        desired_replicas,
+        action
+    ):
+
+        actual_rps_metric.set(
+            actual_rps
+        )
+
+        current_replicas_metric.set(
+            self.current_replicas
+        )
+
+        calculated_replicas_metric.set(
+            calculated_replicas
+        )
+
+        desired_replicas_metric.set(
+            desired_replicas
+        )
+
+        if predictions is not None:
+
+            predicted_15_metric.set(
+                float(
+                    predictions[
+                        "predicted_rps_15s"
+                    ]
+                )
+            )
+
+            predicted_30_metric.set(
+                float(
+                    predictions[
+                        "predicted_rps_30s"
+                    ]
+                )
+            )
+
+            predicted_60_metric.set(
+                float(
+                    predictions[
+                        "predicted_rps_60s"
+                    ]
+                )
+            )
+
+        action_value = {
+            "scale_up": 1,
+            "scale_down": -1,
+            "none": 0
+        }.get(
+            action,
+            0
+        )
+
+        action_metric.set(
+            action_value
+        )
+
+    # -----------------------------------------------------------------
+    # Write decision log
+    # -----------------------------------------------------------------
+
+    def write_log(
+        self,
+        actual_rps,
+        predictions,
+        calculated_replicas,
+        desired_replicas,
+        action,
+        reason
+    ):
+
+        directory = os.path.dirname(
+            LOG_FILE
+        )
+
+        if directory:
+
+            os.makedirs(
+                directory,
+                exist_ok=True
+            )
+
+        record = {
+
+            "timestamp":
+                datetime.now(
+                    timezone.utc
+                ).isoformat(),
+
+            "actual_rps":
+                actual_rps,
+
+            "predicted_rps_15s":
+                (
+                    predictions[
+                        "predicted_rps_15s"
+                    ]
+                    if predictions
+                    else None
+                ),
+
+            "predicted_rps_30s":
+                (
+                    predictions[
+                        "predicted_rps_30s"
+                    ]
+                    if predictions
+                    else None
+                ),
+
+            "predicted_rps_60s":
+                (
+                    predictions[
+                        "predicted_rps_60s"
+                    ]
+                    if predictions
+                    else None
+                ),
+
+            "current_replicas":
+                self.current_replicas,
+
+            "calculated_replicas":
+                calculated_replicas,
+
+            "desired_replicas":
+                desired_replicas,
+
+            "action":
+                action,
+
+            "reason":
+                reason,
+
+            "model":
+                {
+                    "version":
+                        self.model_version,
+
+                    "alpha":
+                        self.alpha,
+
+                    "beta_15s":
+                        self.beta_weights.get(
+                            "15s"
+                        ),
+
+                    "beta_30s":
+                        self.beta_weights.get(
+                            "30s"
+                        ),
+
+                    "beta_60s":
+                        self.beta_weights.get(
+                            "60s"
+                        ),
+
+                    "momentum_lag_samples":
+                        self.momentum_lag,
+
+                    "sampling_interval_seconds":
+                        self.sampling_interval
+                }
         }
 
-        os.makedirs(os.path.dirname(os.path.abspath(self.log_path)), exist_ok=True)
-        with open(self.log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+        with open(
+            LOG_FILE,
+            "a",
+            encoding="utf-8"
+        ) as file:
 
-        print(f"[{log_entry['timestamp']}] Mode: {self.mode.upper()} | RPS: {curr_rps:.2f} -> Pred30s: {pred_30s:.2f} | Replicas: Curr={curr_replicas}, Calc={calc_replicas}, Desired={final_desired} | Action: {action}")
+            file.write(
+                json.dumps(record)
+                + "\n"
+            )
 
+    # -----------------------------------------------------------------
+    # Controller cycle
+    # -----------------------------------------------------------------
+
+    def run_cycle(self):
+
+        actual_rps = (
+            self.get_actual_rps()
+        )
+
+        self.history.append(
+            actual_rps
+        )
+
+        if len(self.history) > 100:
+
+            self.history = (
+                self.history[-100:]
+            )
+
+        predictions = self.predict()
+
+        if predictions is None:
+
+            print(
+                f"[INFO] Actual RPS: "
+                f"{actual_rps:.4f} "
+                f"| collecting history..."
+            )
+
+            actual_rps_metric.set(
+                actual_rps
+            )
+
+            current_replicas_metric.set(
+                self.current_replicas
+            )
+
+            return
+
+        predicted_30 = float(
+            predictions[
+                "predicted_rps_30s"
+            ]
+        )
+
+        calculated_replicas = (
+            self.calculate_replicas(
+                predicted_30
+            )
+        )
+
+        desired_replicas, action, reason = (
+            self.decide(
+                calculated_replicas
+            )
+        )
+
+        print(
+            f"[EMA-TAP] "
+            f"Actual={actual_rps:.4f} RPS | "
+            f"Pred15="
+            f"{predictions['predicted_rps_15s']:.4f} | "
+            f"Pred30="
+            f"{predictions['predicted_rps_30s']:.4f} | "
+            f"Pred60="
+            f"{predictions['predicted_rps_60s']:.4f} | "
+            f"Replicas="
+            f"{self.current_replicas} | "
+            f"Calculated="
+            f"{calculated_replicas} | "
+            f"Desired="
+            f"{desired_replicas} | "
+            f"Action="
+            f"{action}"
+        )
+
+        self.update_metrics(
+            actual_rps,
+            predictions,
+            calculated_replicas,
+            desired_replicas,
+            action
+        )
+
+        self.write_log(
+            actual_rps,
+            predictions,
+            calculated_replicas,
+            desired_replicas,
+            action,
+            reason
+        )
+
+        self.apply_scaling(
+            desired_replicas,
+            action
+        )
+
+    # -----------------------------------------------------------------
+    # Shutdown
+    # -----------------------------------------------------------------
+
+    def stop(self, *_args):
+
+        print(
+            "\n[INFO] Stopping "
+            "EMA-TAP controller..."
+        )
+
+        self.running = False
+
+    # -----------------------------------------------------------------
+    # Main loop
+    # -----------------------------------------------------------------
+
+    def run(self):
+
+        signal.signal(
+            signal.SIGINT,
+            self.stop
+        )
+
+        signal.signal(
+            signal.SIGTERM,
+            self.stop
+        )
+
+        print(
+            f"[INFO] Starting Prometheus "
+            f"metrics server on port "
+            f"{METRICS_PORT}"
+        )
+
+        start_http_server(
+            METRICS_PORT
+        )
+
+        print(
+            f"[INFO] Metrics available at "
+            f"http://localhost:"
+            f"{METRICS_PORT}/metrics"
+        )
+
+        print(
+            "[INFO] Controller started."
+        )
+
+        while self.running:
+
+            cycle_start = time.time()
+
+            try:
+
+                self.run_cycle()
+
+            except Exception as exc:
+
+                print(
+                    f"[ERROR] Controller cycle failed: "
+                    f"{exc}"
+                )
+
+            elapsed = (
+                time.time()
+                - cycle_start
+            )
+
+            sleep_time = max(
+                0,
+                POLL_INTERVAL_SECONDS
+                - elapsed
+            )
+
+            time.sleep(
+                sleep_time
+            )
+
+        print(
+            "[INFO] Controller stopped."
+        )
+
+
+# ---------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Predictive / Adaptive Kubernetes Scaling Controller")
-    parser.add_argument("--mode", choices=["dry-run", "live"], default="dry-run", help="Execution mode (dry-run or live)")
-    parser.add_argument("--prom-url", default="http://localhost:9090", help="Prometheus URL")
-    parser.add_argument("--deployment", default="web-app", help="Kubernetes Deployment name")
-    parser.add_argument("--namespace", default="default", help="Kubernetes Namespace")
-    parser.add_argument("--safe-rps", type=float, default=1.5, help="Sustainable RPS per pod")
-    parser.add_argument("--safety-factor", type=float, default=1.15, help="Capacity safety headroom factor")
-    parser.add_argument("--min-replicas", type=int, default=2, help="Minimum replica limit")
-    parser.add_argument("--max-replicas", type=int, default=10, help="Maximum replica limit")
-    parser.add_argument("--cooldown", type=int, default=30, help="Scale-up cooldown seconds")
-    parser.add_argument("--stabilization", type=int, default=180, help="Scale-down stabilization seconds")
-    parser.add_argument("--interval", type=int, default=5, help="Loop interval seconds")
-    parser.add_argument("--log-file", default=None, help="Custom decision log file path")
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "EMA-TAP predictive Kubernetes "
+            "autoscaling controller"
+        )
+    )
+
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Calculate scaling decisions "
+            "without changing Kubernetes"
+        )
+    )
+
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help=(
+            "Actually scale the web-app deployment"
+        )
+    )
 
     args = parser.parse_args()
 
-    controller = PredictiveScalerController(
-        mode=args.mode,
-        prom_url=args.prom_url,
-        deployment=args.deployment,
-        namespace=args.namespace,
-        safe_rps=args.safe_rps,
-        safety_factor=args.safety_factor,
-        min_rep=args.min_replicas,
-        max_rep=args.max_replicas,
-        cooldown=args.cooldown,
-        stabilization=args.stabilization,
-        log_path=args.log_file,
+    if args.live and args.dry_run:
+
+        parser.error(
+            "Use either --dry-run or --live, "
+            "not both."
+        )
+
+    dry_run = not args.live
+
+    controller = PredictiveScaler(
+        dry_run=dry_run
     )
 
-    print(f"[*] Starting Predictive Scaler Controller in [{args.mode.upper()}] mode...")
-    try:
-        while True:
-            controller.step()
-            time.sleep(args.interval)
-    except KeyboardInterrupt:
-        print("\n[*] Controller stopped by user.")
+    controller.run()
 
 
 if __name__ == "__main__":
+
     main()

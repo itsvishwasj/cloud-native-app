@@ -1,11 +1,11 @@
 {
   "model_name": "EMA-TAP (Trend-Adjusted Exponential Moving Average Predictor)",
-  "version": "1.0.0",
-  "alpha_smoothing": 0.5,
+  "version": "1.1.0",
+  "alpha_smoothing": 0.9,
   "momentum_lag_samples": 3,
   "beta_weights": {
     "15s": 0.5,
-    "30s": 0.25,
+    "30s": 0.1,
     "60s": 0.0
   },
   "sampling_interval_seconds": 5.45,

@@ -54,9 +54,9 @@ def ensure_port_forward():
         urllib.request.urlopen("http://localhost:9090/-/healthy", timeout=1)
         return None
     except Exception:
-        print("[*] Starting port-forward to prometheus-server on localhost:9090...")
+        print("[*] Starting port-forward to monitoring-kube-prometheus-prometheus on localhost:9090...")
         proc = subprocess.Popen(
-            ["kubectl", "port-forward", "svc/prometheus-server", "-n", "monitoring", "9090:80"],
+            ["kubectl", "port-forward", "svc/monitoring-kube-prometheus-prometheus", "-n", "monitoring", "9090:9090"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )

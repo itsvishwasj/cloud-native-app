@@ -31,7 +31,7 @@ def ensure_port_forward():
         return None
     except Exception:
         proc = subprocess.Popen(
-            ["kubectl", "port-forward", "svc/prometheus-server", "-n", "monitoring", "9090:80"],
+            ["kubectl", "port-forward", "svc/monitoring-kube-prometheus-prometheus", "-n", "monitoring", "9090:9090"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
